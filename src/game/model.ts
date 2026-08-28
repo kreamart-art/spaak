@@ -18,7 +18,7 @@ const PAD = `${import.meta.env.BASE_URL}modellen/fatbike.glb`;
 /** Nose to tail, in metres. Everything is scaled to match. */
 const DOELLENGTE = 1.94;
 
-type Rol = "wiel" | "frame" | "zadel" | "stuur" | "spatbord" | "lamp" | "klein";
+type Rol = "wiel" | "frame" | "zadel" | "stuur" | "spatbord" | "lamp" | "trapper" | "klein";
 
 interface Deel {
   readonly mesh: THREE.Mesh;
@@ -39,6 +39,12 @@ export interface GeladenFiets {
    * than to the one it replaced.
    */
   readonly zadelTop: THREE.Vector3;
+  /**
+   * The bottom bracket, measured from the model's own pedal when it has one.
+   * The generated pedals cannot turn, so they are hidden and replaced by the
+   * built-in cranks, which do.
+   */
+  readonly trapas: THREE.Vector3;
 }
 
 /**
@@ -62,6 +68,8 @@ function bepaalRollen(delen: Deel[]): void {
   const maat = new THREE.Vector3();
   alles.getSize(maat);
 
+  const diagonaal = maat.length();
+
   for (const d of delen) {
     if (isWiel(d, maat.y, alles.min.y)) {
       d.rol = "wiel";
@@ -70,11 +78,20 @@ function bepaalRollen(delen: Deel[]): void {
     const hoog = (d.midden.y - alles.min.y) / maat.y;
     const lang = d.maat.z / maat.z;
     const breed = d.maat.x / maat.x;
+    const klein = d.maat.length() < diagonaal * 0.16;
+    const dims = [d.maat.x, d.maat.y, d.maat.z].sort((a, b) => b - a);
+    const gedrongen = dims[0]! / Math.max(1e-6, dims[2]!) < 3.5;
+    // A pedal is small, sits low and hangs out to one side of the centreline.
+    const opzij = Math.abs(d.midden.x - alles.getCenter(new THREE.Vector3()).x) >
+      maat.x * 0.12;
 
-    if (breed > 0.75 && hoog > 0.35) d.rol = "stuur";
+    if (klein && hoog < 0.35 && opzij) d.rol = "trapper";
+    else if (breed > 0.75 && hoog > 0.35) d.rol = "stuur";
     else if (lang > 0.35 && hoog > 0.6 && d.maat.y < maat.y * 0.3) d.rol = "zadel";
     else if (lang > 0.5) d.rol = "frame";
-    else if (d.maat.length() < maat.length() * 0.12 && hoog > 0.4) d.rol = "lamp";
+    // A lamp is compact in all three directions; a brake lever is a sliver, and
+    // giving that an emissive material makes the bike glow in the wrong place.
+    else if (klein && gedrongen && hoog > 0.4) d.rol = "lamp";
     else if (hoog < 0.45) d.rol = "spatbord";
     else d.rol = "klein";
   }
@@ -265,6 +282,21 @@ export async function laadFiets(): Promise<GeladenFiets | null> {
       (zadelDoos.min.z + zadelDoos.max.z) / 2,
     );
 
+    // Take the bottom bracket from the model's own pedal when it has one; a
+    // pedal hangs one crank length below it, so add that back.
+    const trapperDelen = delen.filter((d) => d.rol === "trapper");
+    let trapas: THREE.Vector3;
+    if (trapperDelen.length > 0) {
+      const doos = new THREE.Box3();
+      for (const d of trapperDelen) doos.union(new THREE.Box3().setFromObject(d.mesh));
+      const c = doos.getCenter(new THREE.Vector3());
+      trapas = new THREE.Vector3(0, c.y + 0.17, c.z);
+      // They are static geometry, so they would sit still under moving feet.
+      for (const d of trapperDelen) d.mesh.visible = false;
+    } else {
+      trapas = new THREE.Vector3(0, zadelTop.y - 0.56, zadelTop.z - 0.34);
+    }
+
     console.info(
       "[spaak] fatbike.glb: " +
         delen.map((d) => d.rol).join(", ") +
@@ -277,6 +309,7 @@ export async function laadFiets(): Promise<GeladenFiets | null> {
       wielAchter: achter,
       draaibaar: !!voor && !!achter,
       zadelTop,
+      trapas,
     };
   } catch (err) {
     console.warn("[spaak] fatbike.glb kon niet geladen worden.", err);

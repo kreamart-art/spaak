@@ -81,8 +81,11 @@ export class Speler {
     if (!model) return;
     this.geladen = model;
     this.fiets.groep.visible = false;
-    this.trapAs.visible = false;
     this.groep.add(model.groep);
+
+    // The cranks stay: the generated ones are static geometry, so without these
+    // the rider's feet would circle over nothing.
+    this.trapAs.position.copy(model.trapas);
 
     // Sit the rider on this bike's bench, not on the one it replaced.
     this.figuur.groep.position.set(
@@ -90,13 +93,7 @@ export class Speler {
       model.zadelTop.y - FIGUUR_ZIT_Y,
       model.zadelTop.z - FIGUUR_ZIT_Z,
     );
-    // A bottom bracket sits roughly this far below and ahead of the saddle on
-    // any bike of this shape, so the legs keep reaching a plausible pedal.
-    this.trapasPositie.set(
-      0,
-      model.zadelTop.y - 0.56,
-      model.zadelTop.z - 0.34,
-    );
+    this.trapasPositie.copy(model.trapas);
     console.info(
       `[spaak] fatbike.glb geladen${model.draaibaar ? ", wielen draaien" : ", wielen staan vast"}.`,
     );
