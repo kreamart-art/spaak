@@ -20,6 +20,17 @@ export interface Figuur {
   readonly bovenlijf: THREE.Group;
   /** Sets the leg pose from a pedal position, in the group's own space. */
   zetBeen(kant: 0 | 1, trapper: THREE.Vector3): void;
+  /** Reaches an arm to a grip, in the group's own space. */
+  zetArm(kant: 0 | 1, greep: THREE.Vector3): void;
+}
+
+interface Arm {
+  readonly schouder: THREE.Vector3;
+  readonly bovenarm: THREE.Mesh;
+  readonly onderarm: THREE.Mesh;
+  readonly hand: THREE.Mesh;
+  readonly lengteBoven: number;
+  readonly lengteOnder: number;
 }
 
 interface Been {
@@ -44,21 +55,6 @@ function capsule(
   mat: THREE.Material,
 ): THREE.Mesh {
   return new THREE.Mesh(new THREE.CapsuleGeometry(straal, lengte, 6, 12), mat);
-}
-
-/** A capsule built to span two fixed points, for limbs that do not stretch. */
-function ledemaat(
-  a: [number, number, number],
-  b: [number, number, number],
-  straal: number,
-  mat: THREE.Material,
-): THREE.Mesh {
-  const van = new THREE.Vector3(...a);
-  const naar = new THREE.Vector3(...b);
-  const lengte = van.distanceTo(naar);
-  const m = capsule(straal, Math.max(0.01, lengte - straal * 2), mat);
-  spanCapsule(m, van, naar);
-  return m;
 }
 
 export function maakFiguur(): Figuur {
@@ -177,23 +173,56 @@ export function maakFiguur(): Figuur {
   hoofdGroep.add(rand);
 
   // ------------------------------------------------------------------ armen --
+  // Arms reach for a grip the same way the legs reach for a pedal, because a
+  // generated bike puts its handlebars wherever it likes.
+  const armen: Arm[] = [];
   for (const kant of [-1, 1]) {
-    const schouder = new THREE.Mesh(new THREE.SphereGeometry(0.068, 10, 8), jas);
-    schouder.position.set(kant * 0.16, 1.36, 0.12);
-    bovenlijf.add(schouder);
+    const schouder = new THREE.Vector3(kant * 0.16, 1.36, 0.12);
+    const bal = new THREE.Mesh(new THREE.SphereGeometry(0.068, 10, 8), jas);
+    bal.position.copy(schouder);
+    bovenlijf.add(bal);
 
-    bovenlijf.add(
-      ledemaat([kant * 0.16, 1.36, 0.12], [kant * 0.22, 1.19, -0.13], 0.05, jas),
-    );
-    bovenlijf.add(
-      ledemaat([kant * 0.22, 1.19, -0.13], [kant * 0.26, 1.04, -0.4], 0.043, jas),
-    );
+    const lengteBoven = 0.3;
+    const lengteOnder = 0.32;
+    const bovenarm = capsule(0.05, lengteBoven - 0.1, jas);
+    const onderarm = capsule(0.043, lengteOnder - 0.086, jas);
+    bovenlijf.add(bovenarm, onderarm);
 
     const hand = new THREE.Mesh(new THREE.SphereGeometry(0.055, 10, 8), huid);
-    hand.position.set(kant * 0.26, 1.03, -0.43);
     hand.scale.set(0.85, 1, 1.15);
     bovenlijf.add(hand);
+
+    armen.push({ schouder, bovenarm, onderarm, hand, lengteBoven, lengteOnder });
   }
+
+  const armHulp = new THREE.Vector3();
+  const armRicht = new THREE.Vector3();
+  const armLood = new THREE.Vector3();
+
+  const zetArm = (kant: 0 | 1, greep: THREE.Vector3): void => {
+    const arm = armen[kant]!;
+    const schouder = arm.schouder;
+    armRicht.subVectors(greep, schouder);
+    const d = Math.min(
+      arm.lengteBoven + arm.lengteOnder - 0.02,
+      Math.max(Math.abs(arm.lengteBoven - arm.lengteOnder) + 0.02, armRicht.length()),
+    );
+    armRicht.normalize();
+    const cos =
+      (arm.lengteBoven * arm.lengteBoven + d * d - arm.lengteOnder * arm.lengteOnder) /
+      (2 * arm.lengteBoven * d);
+    const hoek = Math.acos(Math.min(1, Math.max(-1, cos)));
+    // The elbow swings out and down, away from the body.
+    armLood.set(0, -armRicht.z, armRicht.y).normalize();
+    armHulp
+      .copy(schouder)
+      .addScaledVector(armRicht, Math.cos(hoek) * arm.lengteBoven)
+      .addScaledVector(armLood, Math.sin(hoek) * arm.lengteBoven);
+
+    spanCapsule(arm.bovenarm, schouder, armHulp);
+    spanCapsule(arm.onderarm, armHulp, greep);
+    arm.hand.position.copy(greep);
+  };
 
   // ------------------------------------------------------------------ benen --
   const benen: Been[] = [];
@@ -259,6 +288,8 @@ export function maakFiguur(): Figuur {
   // A sane pose before the first frame.
   zetBeen(0, new THREE.Vector3(-0.12, 0.28, 0.0));
   zetBeen(1, new THREE.Vector3(0.12, 0.28, 0.3));
+  zetArm(0, new THREE.Vector3(-0.26, 1.03, -0.43));
+  zetArm(1, new THREE.Vector3(0.26, 1.03, -0.43));
 
-  return { groep, bovenlijf, zetBeen };
+  return { groep, bovenlijf, zetBeen, zetArm };
 }

@@ -51,6 +51,8 @@ export class Speler {
   private trapHoek = 0;
   private readonly trapper = new THREE.Vector3();
   private readonly trapasPositie = new THREE.Vector3(TRAPAS[0], TRAPAS[1], TRAPAS[2]);
+  private greepLinks: THREE.Vector3 | null = null;
+  private greepRechts: THREE.Vector3 | null = null;
 
   baan = 1;
   private vorigeBaan = 1;
@@ -88,13 +90,26 @@ export class Speler {
     // the rider's feet would circle over nothing.
     this.trapAs.position.copy(model.trapas);
 
-    // Sit the rider on this bike's bench, not on the one it replaced.
+    // Sit the rider ON this bike's bench, not in it and not on the one it
+    // replaced. The hip joint sits a little above the cushion, and a rider on a
+    // bench seat sits just behind its front edge.
     this.figuur.groep.position.set(
       0,
-      model.zadelTop.y - FIGUUR_ZIT_Y,
-      model.zadelTop.z - FIGUUR_ZIT_Z,
+      model.zadelTop.y + 0.07 - FIGUUR_ZIT_Y,
+      model.zadelTop.z + 0.06 - FIGUUR_ZIT_Z,
     );
     this.trapasPositie.copy(model.trapas);
+
+    // The grips, in the figure's own space, so the arm solver can reach them.
+    const naarFiguur = (p: THREE.Vector3): THREE.Vector3 =>
+      p.clone().sub(this.figuur.groep.position);
+    const halveStuur = 0.26;
+    this.greepLinks = naarFiguur(
+      new THREE.Vector3(-halveStuur, model.stuurPunt.y, model.stuurPunt.z),
+    );
+    this.greepRechts = naarFiguur(
+      new THREE.Vector3(halveStuur, model.stuurPunt.y, model.stuurPunt.z),
+    );
     console.info(
       `[spaak] fatbike.glb geladen${model.draaibaar ? ", wielen draaien" : ", wielen staan vast"}.`,
     );
@@ -166,6 +181,12 @@ export class Speler {
         this.trapasPositie.z + Math.sin(faze) * TRAP_STRAAL,
       );
       this.figuur.zetBeen(kant, this.trapper);
+    }
+
+    // Hands follow the handlebars of whatever bike is under the rider.
+    if (this.greepLinks && this.greepRechts) {
+      this.figuur.zetArm(0, this.greepLinks);
+      this.figuur.zetArm(1, this.greepRechts);
     }
   }
 

@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 
 /**
  * A stroopwafel: two thin waffle discs with a caramel layer between them.
@@ -109,4 +110,71 @@ export function maakStroopwafel(): Stroopwafel {
   });
 
   return { geometrie, materialen: [karamel, vlak, vlak], straal: STRAAL };
+}
+
+
+/** Diameter of a stroopwafel in the game, in metres. Readable at speed. */
+const DOELMAAT = 0.68;
+const MODELPAD = `${import.meta.env.BASE_URL}modellen/stroopwafel.glb`;
+
+/**
+ * A generated stroopwafel, if one has been dropped in.
+ *
+ * Normalised the same way the bike is: the thinnest axis becomes z, so it faces
+ * the player and spinning it around y turns it like a coin, and it is scaled to
+ * one readable size whatever the generator returned. Returns null on any
+ * trouble; the drawn one then stays.
+ */
+export async function laadStroopwafel(): Promise<{
+  geometrie: THREE.BufferGeometry;
+  materiaal: THREE.Material;
+} | null> {
+  try {
+    const res = await fetch(MODELPAD, { method: "HEAD" });
+    if (!res.ok) return null;
+  } catch {
+    return null;
+  }
+
+  try {
+    const gltf = await new GLTFLoader().loadAsync(MODELPAD);
+    let mesh: THREE.Mesh | null = null;
+    gltf.scene.traverse((k) => {
+      if (!mesh && k instanceof THREE.Mesh) mesh = k;
+    });
+    if (!mesh) return null;
+    const gevonden: THREE.Mesh = mesh;
+
+    gevonden.updateMatrixWorld(true);
+    const geo = gevonden.geometry.clone();
+    geo.applyMatrix4(gevonden.matrixWorld);
+    if (!geo.attributes.normal) geo.computeVertexNormals();
+
+    geo.computeBoundingBox();
+    const maat = geo.boundingBox!.getSize(new THREE.Vector3());
+
+    // Lay the disc so its flat faces look along z.
+    if (maat.x <= maat.y && maat.x <= maat.z) geo.rotateY(Math.PI / 2);
+    else if (maat.y <= maat.z) geo.rotateX(Math.PI / 2);
+
+    geo.computeBoundingBox();
+    const na = geo.boundingBox!.getSize(new THREE.Vector3());
+    const breedte = Math.max(na.x, na.y);
+    if (breedte > 1e-4) geo.scale(DOELMAAT / breedte, DOELMAAT / breedte, DOELMAAT / breedte);
+    geo.center();
+    geo.computeBoundingBox();
+
+    const mat = Array.isArray(gevonden.material)
+      ? gevonden.material[0]!
+      : gevonden.material;
+    // The baked texture comes out hot under this sky; the tint pulls it back to
+    // baked-biscuit without touching the map itself.
+    if ("color" in mat) {
+      (mat as THREE.MeshStandardMaterial).color.setHex(0xd6c9bd);
+    }
+    return { geometrie: geo, materiaal: mat };
+  } catch (err) {
+    console.warn("[spaak] stroopwafel.glb kon niet geladen worden.", err);
+    return null;
+  }
 }

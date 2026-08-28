@@ -2,7 +2,7 @@ import * as THREE from "three";
 import type { Baan } from "./baan.ts";
 import type { Kromming } from "./kromming.ts";
 import type { Doos } from "./speler.ts";
-import { maakStroopwafel } from "./stroopwafel.ts";
+import { laadStroopwafel, maakStroopwafel } from "./stroopwafel.ts";
 import { BAAN_X, RECYCLE } from "./constanten.ts";
 
 export type Soort = "hek" | "balk" | "blok" | "tram";
@@ -92,6 +92,15 @@ export class Obstakels {
     this.wafels.frustumCulled = false;
     this.wafels.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     scene.add(this.wafels);
+    // A generated waffle replaces the drawn one as soon as it is there.
+    void laadStroopwafel().then((model) => {
+      if (!model) return;
+      this.wafels.geometry = model.geometrie;
+      this.wafels.material = model.materiaal;
+      kromming.hecht(model.materiaal);
+      console.info("[spaak] stroopwafel.glb geladen.");
+    });
+
     for (let i = 0; i < WAFEL_POOL; i++) {
       this.wafelS.push(0);
       this.wafelX.push(0);

@@ -1,53 +1,50 @@
 # Gegenereerde modellen
 
-## Wat jij doet
+`fatbike.glb` en `stroopwafel.glb` worden automatisch opgepakt zodra ze hier
+staan. Ontbreken ze, dan gebruikt het spel de in code gebouwde versies en start
+het gewoon.
 
-1. Download het model uit de generator als **GLB**.
-2. Zet het hier neer als **`fatbike-ruw.glb`**.
-3. Draai in de projectmap:
+## Van generator naar spel
+
+1. Genereer in Meshy met **multi-view** en **structuur** (textuur) aan.
+   **Splitsen hoef je niet**: dat levert een gesegmenteerd model zonder textuur,
+   en de wielen worden hier toch uit de mesh gesneden.
+2. Download als GLB en zet neer in `tools/modellen-bron/` (niet in `public/`,
+   want Vite kopieert dat integraal naar de build).
+3. Draai:
 
    ```
-   npm run model
+   npm run model tools/modellen-bron/fatbike-textuur.glb public/modellen/fatbike.glb 0.012 1024
+   npm run model tools/modellen-bron/stroopwafel-ruw.glb public/modellen/stroopwafel.glb 0.0006 512
    ```
 
-Dat schrijft een uitgedunde `fatbike.glb`. Staat dat bestand er, dan vervangt het
-automatisch de in code gebouwde fiets. Staat het er niet, dan gebeurt er niets en
-blijft de procedurele versie staan; het spel start hoe dan ook.
+   Weld, vereenvoudig, texturen verkleinen, naar webp. Van ~2 miljoen driehoeken
+   en 2K-maps naar 24k en 1024 voor de fiets, en naar 4k en 512 voor de wafel.
+   De laatste twee getallen zijn de behoudratio en de texturemaat.
 
-Je kunt de download ook direct `fatbike.glb` noemen en het uitdunnen overslaan.
-Dat werkt, maar een model uit een image-to-3D dienst komt met een paar miljoen
-driehoeken binnen. Dat is een factor honderd te veel voor iets dat op een
-telefoon zestig pixels hoog in beeld staat.
+## Wat de loader zelf uitzoekt
 
-## Wat het uitdunnen doet
+Alles op **vorm**, niets op naam, want de export levert een naamloze mesh.
 
-`npm run model` gebruikt gltf-transform: vereenvoudigt de mesh met behoud van het
-silhouet, verkleint de texturen naar 1024 en comprimeert met Draco en WebP. Wil
-je meer of minder detail, geef dan een foutmarge mee; hoger is grover:
-
-```
-npm run model public/modellen/fatbike-ruw.glb public/modellen/fatbike.glb 0.02
-```
-
-## Wat de loader zelf regelt
-
-- **Schaal.** Het model wordt naar 1,94 m lengte geschaald, wat de generator ook
-  teruggeeft.
-- **Richting.** De langste as wordt de lengterichting en komt langs de z-as te
-  liggen.
-- **Nulpunt.** Het model wordt gecentreerd en op de grond gezet.
-- **Normalen.** Ontbreken ze, dan worden ze berekend.
-
-## Draaiende wielen
-
-De wielen moeten **losse onderdelen** zijn, anders draaien ze niet mee. Bij Meshy
-heet die optie Splitsen, en die zit achter de betaalmuur. Zonder dat laadt het
-model prima maar staan de wielen stil; de console zegt het er dan bij.
-
-De loader zoekt de wielen eerst op naam (`wiel`, `wheel`, `tyre`, `tire`, `band`,
-`rim`, `velg`) en anders op vorm: een rond, plat onderdeel voor- en achteraan.
+- **Richting.** De langste as wordt de lengte. Het hoogste punt van het model is
+  het stuur, en dat zit vooraan; ligt het achter het midden, dan gaat de fiets
+  180 graden om.
+- **Wielen.** De contactvlakken op de grond geven de asposities. De straal volgt
+  uit de koordbreedte laag bij de grond: voor een cirkel geldt
+  `r = (c² + y²) / 2y`, en daar beneden staat alleen band, geen frame.
+- **Uitsnijden.** Driehoeken binnen die schijf en binnen de bandbreedte worden
+  een eigen mesh, met UV's, dus de textuur blijft. Net binnen de buitenrand
+  gesneden, anders scheuren spatbord en vork doormidden.
+- **Draaien.** Elk wiel krijgt een pivot-groep op de gemeten as, en draait om de
+  as die in zijn eigen ruimte overeenkomt met de wereld-x.
+- **Zadel en stuur.** Het hoogste vlakke deel achter het stuur is de bank; de
+  fietser gaat op het voorste derde daarvan zitten en zijn armen reiken via IK
+  naar de handvatten.
+- **Materiaal.** Heeft het model een textuur, dan blijft die. Zo niet, dan
+  krijgt elk onderdeel een eigen materiaal en worden de kruisen, het woordmerk,
+  de remschijven en het achterlicht erop gezet.
 
 ## Licentie
 
-Meshy levert op het gratis plan onder **CC BY 4.0**. Naamsvermelding is dan
-verplicht en hoort in het creditsscherm, naast OpenStreetMap en 3DBAG.
+Meshy levert op het gratis plan onder **CC BY 4.0**. Naamsvermelding hoort dan in
+het creditsscherm, naast OpenStreetMap en 3DBAG.

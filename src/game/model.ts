@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { splitsWielen } from "./splits.ts";
 
 /**
  * Loader for the generated fatbike.
@@ -49,6 +50,8 @@ export interface GeladenFiets {
    * than to the one it replaced.
    */
   readonly zadelTop: THREE.Vector3;
+  /** The grips, so the rider can actually hold on. */
+  readonly stuurPunt: THREE.Vector3;
   /**
    * The bottom bracket, measured from the model's own pedal when it has one.
    * The generated pedals cannot turn, so they are hidden and replaced by the
@@ -343,14 +346,18 @@ function maakAccenten(
  * quantised and carry the offset in the node's own scale, so a shift computed
  * in the wrong space comes out orders of magnitude too large.
  */
-function herpivoteer(mesh: THREE.Mesh): THREE.Group | null {
+function herpivoteer(mesh: THREE.Mesh, asWereld?: THREE.Vector3): THREE.Group | null {
   const ouder = mesh.parent;
   if (!ouder) return null;
 
   ouder.updateMatrixWorld(true);
-  const middenWereld = new THREE.Box3()
-    .setFromObject(mesh)
-    .getCenter(new THREE.Vector3());
+  // Prefer the measured axle. A carved wheel is not symmetric, because the fork
+  // and the mudguard are deliberately left out of it, so its bounding box centre
+  // sits off the real axle and spinning around that swings the wheel into the
+  // road.
+  const middenWereld =
+    asWereld?.clone() ??
+    new THREE.Box3().setFromObject(mesh).getCenter(new THREE.Vector3());
   const middenOuder = ouder.worldToLocal(middenWereld.clone());
 
   const as = new THREE.Group();
@@ -362,6 +369,7 @@ function herpivoteer(mesh: THREE.Mesh): THREE.Group | null {
   mesh.position.sub(middenOuder);
   as.add(mesh);
   as.updateMatrixWorld(true);
+
   return as;
 }
 
@@ -378,7 +386,7 @@ export async function laadFiets(): Promise<GeladenFiets | null> {
     const groep = new THREE.Group();
     groep.add(gltf.scene);
 
-    const meshes: THREE.Mesh[] = [];
+    let meshes: THREE.Mesh[] = [];
     gltf.scene.traverse((kind) => {
       if (kind instanceof THREE.Mesh) meshes.push(kind);
     });
@@ -389,16 +397,75 @@ export async function laadFiets(): Promise<GeladenFiets | null> {
       if (!m.geometry.attributes.normal) m.geometry.computeVertexNormals();
     }
 
+    // A textured export carries its own look; only a bare one gets ours.
+    const getextureerd = meshes.some((m) => {
+      const mat = m.material;
+      const lijst = Array.isArray(mat) ? mat : [mat];
+      return lijst.some((x) => "map" in x && (x as THREE.MeshStandardMaterial).map);
+    });
+
     // --- orient: longest axis becomes the length, and it runs along z --------
     groep.updateMatrixWorld(true);
     let alles = new THREE.Box3().setFromObject(groep);
-    let maat = new THREE.Vector3();
+    const maat = new THREE.Vector3();
     alles.getSize(maat);
     if (maat.x > maat.z) groep.rotation.y = Math.PI / 2;
     else if (maat.y > maat.z && maat.y > maat.x) groep.rotation.x = Math.PI / 2;
     groep.updateMatrixWorld(true);
 
-    // --- measure every part in the oriented frame ---------------------------
+    // --- scale, centre, set down --------------------------------------------
+    alles = new THREE.Box3().setFromObject(groep, true);
+    alles.getSize(maat);
+    const schaal = maat.z > 1e-4 ? DOELLENGTE / maat.z : 1;
+    groep.scale.multiplyScalar(schaal);
+    groep.updateMatrixWorld(true);
+
+    alles = new THREE.Box3().setFromObject(groep, true);
+    const midden = new THREE.Vector3();
+    alles.getCenter(midden);
+    groep.position.x -= midden.x;
+    groep.position.z -= midden.z;
+    groep.position.y -= alles.min.y;
+    groep.updateMatrixWorld(true);
+
+    // --- carve the wheels out of a fused mesh -------------------------------
+    let wielMeshes: THREE.Mesh[] = [];
+    let asVoor: THREE.Vector3 | null = null;
+    let asAchter: THREE.Vector3 | null = null;
+    if (meshes.length === 1) {
+      const heel = meshes[0]!;
+      heel.updateMatrixWorld(true);
+      const stukken = splitsWielen(heel.geometry, heel.matrixWorld);
+      if (stukken) {
+        asVoor = new THREE.Vector3(0, stukken.schatting.straal, stukken.schatting.zVoor);
+        asAchter = new THREE.Vector3(0, stukken.schatting.straal, stukken.schatting.zAchter);
+        const ouder = heel.parent ?? gltf.scene;
+        const maakDeel = (geo: THREE.BufferGeometry): THREE.Mesh => {
+          const m = new THREE.Mesh(geo, heel.material);
+          m.position.copy(heel.position);
+          m.quaternion.copy(heel.quaternion);
+          m.scale.copy(heel.scale);
+          m.frustumCulled = false;
+          ouder.add(m);
+          return m;
+        };
+        const voorMesh = maakDeel(stukken.wielVoor.geometrie);
+        const achterMesh = maakDeel(stukken.wielAchter.geometrie);
+        const restMesh = maakDeel(stukken.rest.geometrie);
+        ouder.remove(heel);
+        wielMeshes = [voorMesh, achterMesh];
+        meshes = [restMesh, voorMesh, achterMesh];
+        console.info(
+          `[spaak] wielen uit de mesh gesneden: straal ${stukken.schatting.straal.toFixed(2)} m, ` +
+            `assen op z ${stukken.schatting.zVoor.toFixed(2)} en ${stukken.schatting.zAchter.toFixed(2)}, ` +
+            `${stukken.wielVoor.driehoeken} + ${stukken.wielAchter.driehoeken} driehoeken.`,
+        );
+      } else {
+        console.warn("[spaak] wielen niet uit de mesh te snijden; ze blijven stilstaan.");
+      }
+    }
+
+    // --- measure the parts and work out what they are ------------------------
     const delen: Deel[] = meshes.map((mesh) => {
       const doos = new THREE.Box3().setFromObject(mesh);
       const m = new THREE.Vector3();
@@ -407,22 +474,52 @@ export async function laadFiets(): Promise<GeladenFiets | null> {
       doos.getCenter(c);
       return { mesh, doos, maat: m, midden: c, rol: "klein" as Rol };
     });
-    bepaalRollen(delen);
 
-    const wielen = delen.filter((d) => d.rol === "wiel");
-    if (wielen.length !== 2) {
-      console.warn(
-        `[spaak] ${wielen.length} wiel(en) herkend in fatbike.glb, verwacht 2. ` +
-          "Ze blijven stilstaan.",
-      );
+    if (wielMeshes.length === 2) {
+      for (const d of delen) {
+        d.rol = wielMeshes.includes(d.mesh) ? "wiel" : "frame";
+      }
+    } else {
+      bepaalRollen(delen);
     }
+    const wielen = delen.filter((d) => d.rol === "wiel");
 
     // --- face the right way -------------------------------------------------
-    // The handlebars are the widest thing high up, and they sit at the front.
-    const stuur = delen.find((d) => d.rol === "stuur");
-    if (stuur && stuur.midden.z > 0) {
+    // The handlebars are the highest point on a bike and they sit at the front.
+    // Find the actual highest vertex, not the centre of the part it belongs to:
+    // on a single fused frame that centre sits near the middle and the answer
+    // becomes a coin toss.
+    const hoogstePunt = new THREE.Vector3(0, -Infinity, 0);
+    const punt = new THREE.Vector3();
+    for (const d of delen) {
+      if (d.rol === "wiel") continue;
+      d.mesh.updateMatrixWorld(true);
+      const pos = d.mesh.geometry.getAttribute("position");
+      for (let i = 0; i < pos.count; i++) {
+        punt.fromBufferAttribute(pos, i).applyMatrix4(d.mesh.matrixWorld);
+        if (punt.y > hoogstePunt.y) hoogstePunt.copy(punt);
+      }
+    }
+    const stuur = delen.find((x) => x.rol === "stuur");
+    const kijktVerkeerd = stuur ? stuur.midden.z > 0 : hoogstePunt.z > 0;
+    const stuurPunt = new THREE.Vector3(
+      0,
+      hoogstePunt.y - 0.06,
+      kijktVerkeerd ? -hoogstePunt.z : hoogstePunt.z,
+    );
+    console.info(
+      `[spaak] hoogste punt op z ${hoogstePunt.z.toFixed(2)}, y ${hoogstePunt.y.toFixed(2)}` +
+        `${kijktVerkeerd ? " -> omgedraaid" : ""}`,
+    );
+    if (kijktVerkeerd) {
       groep.rotation.y += Math.PI;
       groep.updateMatrixWorld(true);
+      // The measured axles were taken before the turn, so turn them too.
+      for (const as of [asVoor, asAchter]) {
+        if (!as) continue;
+        as.x = -as.x;
+        as.z = -as.z;
+      }
       for (const d of delen) {
         d.doos.setFromObject(d.mesh);
         d.doos.getSize(d.maat);
@@ -430,37 +527,97 @@ export async function laadFiets(): Promise<GeladenFiets | null> {
       }
     }
 
-    // --- scale, centre, set down --------------------------------------------
-    alles = new THREE.Box3().setFromObject(groep);
-    alles.getSize(maat);
-    const schaal = maat.z > 1e-4 ? DOELLENGTE / maat.z : 1;
-    groep.scale.multiplyScalar(schaal);
-    groep.updateMatrixWorld(true);
-
-    alles = new THREE.Box3().setFromObject(groep);
-    const midden = new THREE.Vector3();
-    alles.getCenter(midden);
-    groep.position.x -= midden.x;
-    groep.position.z -= midden.z;
-    groep.position.y -= alles.min.y;
-    groep.updateMatrixWorld(true);
-
     // --- materials ----------------------------------------------------------
-    for (const d of delen) {
-      d.mesh.material = materiaalVoor(d.rol);
+    if (!getextureerd) {
+      for (const d of delen) d.mesh.material = materiaalVoor(d.rol);
     }
-    const accenten = maakAccenten(groep, delen, wielen);
+    const accenten = getextureerd
+      ? new THREE.Group()
+      : maakAccenten(groep, delen, wielen);
+
+    // --- anchors for the rider ----------------------------------------------
+    /**
+     * Find the bench on a fused model.
+     *
+     * The handlebars are higher than the seat, so they have to be excluded
+     * first; after that the highest surface is the seat. Everything level with
+     * it, within a few centimetres, is the bench, and its middle is where the
+     * rider's hips go.
+     */
+    const schatZadel = (): THREE.Vector3 | null => {
+      const punten: THREE.Vector3[] = [];
+      const v = new THREE.Vector3();
+      for (const d of delen) {
+        if (d.rol === "wiel") continue;
+        d.mesh.updateMatrixWorld(true);
+        const pos = d.mesh.geometry.getAttribute("position");
+        for (let i = 0; i < pos.count; i++) {
+          v.fromBufferAttribute(pos, i).applyMatrix4(d.mesh.matrixWorld);
+          punten.push(v.clone());
+        }
+      }
+      if (punten.length === 0) return null;
+
+      // The bars sit forward of the seat; drop the front quarter of the bike.
+      const zGrens = -DOELLENGTE * 0.12;
+      const achterste = punten.filter((q) => q.z > zGrens);
+      if (achterste.length < 20) return null;
+
+      let top = -Infinity;
+      for (const q of achterste) if (q.y > top) top = q.y;
+
+      const vlak = achterste.filter((q) => q.y > top - 0.05);
+      if (vlak.length < 10) return null;
+      // The plateau runs from the front of the bench to the back of the rack,
+      // so its middle sits over the rear wheel. A rider sits on the front third.
+      let zVoorste = Infinity;
+      let zAchterste = -Infinity;
+      for (const q of vlak) {
+        if (q.z < zVoorste) zVoorste = q.z;
+        if (q.z > zAchterste) zAchterste = q.z;
+      }
+      return new THREE.Vector3(0, top, zVoorste + (zAchterste - zVoorste) * 0.32);
+    };
+    const zadelDeel = delen.find((d) => d.rol === "zadel");
+    const zadelDoos = zadelDeel
+      ? new THREE.Box3().setFromObject(zadelDeel.mesh)
+      : new THREE.Box3().setFromObject(groep);
+    const heleDoos = new THREE.Box3().setFromObject(groep);
+    const heleMaat = heleDoos.getSize(new THREE.Vector3());
+    // Without a separate bench, put the rider at the seat height a bike of this
+    // length would have, just behind the middle.
+    const zadelTop = zadelDeel
+      ? new THREE.Vector3(0, zadelDoos.max.y, (zadelDoos.min.z + zadelDoos.max.z) / 2)
+      : (schatZadel() ??
+        new THREE.Vector3(0, heleDoos.min.y + heleMaat.y * 0.72, heleMaat.z * 0.1));
+
+    const trapperDelen = delen.filter((d) => d.rol === "trapper");
+    let trapas: THREE.Vector3;
+    if (trapperDelen.length > 0) {
+      const doos = new THREE.Box3();
+      for (const d of trapperDelen) doos.union(new THREE.Box3().setFromObject(d.mesh));
+      const c = doos.getCenter(new THREE.Vector3());
+      trapas = new THREE.Vector3(0, c.y + 0.17, c.z);
+      for (const d of trapperDelen) d.mesh.visible = false;
+    } else {
+      trapas = new THREE.Vector3(0, zadelTop.y - 0.56, zadelTop.z - 0.34);
+    }
 
     // --- wheels turn on their own axles -------------------------------------
     let voor: THREE.Object3D | null = null;
     let achter: THREE.Object3D | null = null;
     if (wielen.length === 2) {
+      const gemeten = [asVoor, asAchter].filter((v): v is THREE.Vector3 => !!v);
       const assen: { as: THREE.Group; z: number }[] = [];
       for (const w of wielen) {
         const z = new THREE.Box3()
           .setFromObject(w.mesh)
           .getCenter(new THREE.Vector3()).z;
-        const as = herpivoteer(w.mesh);
+        // Match this piece to the nearer of the two measured axles.
+        const anker = gemeten
+          .slice()
+          .sort((a, b) => Math.abs(a.z - z) - Math.abs(b.z - z))[0];
+        const as = herpivoteer(w.mesh, anker);
         if (as) assen.push({ as, z });
       }
       if (assen.length === 2) {
@@ -470,34 +627,17 @@ export async function laadFiets(): Promise<GeladenFiets | null> {
       }
     }
 
-    // Measured last, once the model sits where it will stay. The group is not
-    // parented yet, so its world space is the player's local space.
-    const zadelDeel = delen.find((d) => d.rol === "zadel");
-    const zadelDoos = zadelDeel
-      ? new THREE.Box3().setFromObject(zadelDeel.mesh)
-      : new THREE.Box3().setFromObject(groep);
-    const zadelTop = new THREE.Vector3(
-      0,
-      zadelDoos.max.y,
-      (zadelDoos.min.z + zadelDoos.max.z) / 2,
-    );
+    // Put it on the road as the very last thing, and do it precisely.
+    //
+    // Box3.setFromObject walks the children's bounding boxes by default, which
+    // for a rotated group gives the box of a box and not the shape itself. The
+    // precise pass walks the vertices, which is what "the bottom of the tyre"
+    // actually means.
+    groep.updateMatrixWorld(true);
+    const opDeGrond = new THREE.Box3().setFromObject(groep, true);
+    groep.position.y -= opDeGrond.min.y;
+    groep.updateMatrixWorld(true);
 
-    // Take the bottom bracket from the model's own pedal when it has one; a
-    // pedal hangs one crank length below it, so add that back.
-    const trapperDelen = delen.filter((d) => d.rol === "trapper");
-    let trapas: THREE.Vector3;
-    if (trapperDelen.length > 0) {
-      const doos = new THREE.Box3();
-      for (const d of trapperDelen) doos.union(new THREE.Box3().setFromObject(d.mesh));
-      const c = doos.getCenter(new THREE.Vector3());
-      trapas = new THREE.Vector3(0, c.y + 0.17, c.z);
-      // They are static geometry, so they would sit still under moving feet.
-      for (const d of trapperDelen) d.mesh.visible = false;
-    } else {
-      trapas = new THREE.Vector3(0, zadelTop.y - 0.56, zadelTop.z - 0.34);
-    }
-
-    // The axis to roll around, expressed in each wheel's own space.
     const wereldX = new THREE.Vector3(1, 0, 0);
     const assenLokaal = new Map<THREE.Object3D, THREE.Vector3>();
     for (const w of [voor, achter]) {
@@ -506,15 +646,13 @@ export async function laadFiets(): Promise<GeladenFiets | null> {
       w.parent.getWorldQuaternion(q);
       assenLokaal.set(w, wereldX.clone().applyQuaternion(q.invert()).normalize());
     }
-
     const draaiWielen = (hoek: number): void => {
       for (const [wiel, as] of assenLokaal) wiel.rotateOnAxis(as, hoek);
     };
 
     console.info(
-      "[spaak] fatbike.glb: " +
-        delen.map((d) => d.rol).join(", ") +
-        ` (${meshes.length} delen)`,
+      `[spaak] fatbike.glb: ${delen.map((d) => d.rol).join(", ")} ` +
+        `(${delen.length} delen, ${getextureerd ? "eigen textuur" : "eigen materialen"})`,
     );
 
     return {
@@ -525,6 +663,7 @@ export async function laadFiets(): Promise<GeladenFiets | null> {
       accenten,
       draaiWielen,
       zadelTop,
+      stuurPunt,
       trapas,
     };
   } catch (err) {
