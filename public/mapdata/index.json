@@ -1,0 +1,26 @@
+{
+  "zones": [
+    {
+      "id": "jordaan",
+      "naam": "Jordaan",
+      "lengte": 1845,
+      "bytes": 16637
+    },
+    {
+      "id": "wallen",
+      "naam": "De Wallen",
+      "lengte": 845,
+      "bytes": 8096
+    },
+    {
+      "id": "vondelpark",
+      "naam": "Vondelpark",
+      "lengte": 2158,
+      "bytes": 15332
+    }
+  ],
+  "attributie": [
+    "© OpenStreetMap contributors",
+    "3DBAG, TU Delft (CC BY 4.0)"
+  ]
+}

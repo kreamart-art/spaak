@@ -1,0 +1,7 @@
+node_modules
+dist
+tools/mapgen/.cache
+.DS_Store
+# De ruwe generator-uitvoer is 35 MB per stuk; alleen de uitgedunde versie in
+# public/modellen gaat mee de build in.
+tools/modellen-bron/
