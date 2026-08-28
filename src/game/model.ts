@@ -34,6 +34,14 @@ export interface GeladenFiets {
   readonly wielAchter: THREE.Object3D | null;
   readonly draaibaar: boolean;
   /**
+   * Roll both wheels forward by an angle.
+   *
+   * Not something the caller can do with rotateX: the model is turned to face
+   * the right way, so a wheel's own x axis is no longer the world's. Rotating
+   * about it makes the wheel spin flat like a coin instead of rolling.
+   */
+  draaiWielen(hoek: number): void;
+  /**
    * Where the rider goes: the top of the bench, measured on this model. A
    * generated bike has its own proportions, so the rider is fitted to it rather
    * than to the one it replaced.
@@ -297,6 +305,20 @@ export async function laadFiets(): Promise<GeladenFiets | null> {
       trapas = new THREE.Vector3(0, zadelTop.y - 0.56, zadelTop.z - 0.34);
     }
 
+    // The axis to roll around, expressed in each wheel's own space.
+    const wereldX = new THREE.Vector3(1, 0, 0);
+    const assenLokaal = new Map<THREE.Object3D, THREE.Vector3>();
+    for (const w of [voor, achter]) {
+      if (!w || !w.parent) continue;
+      const q = new THREE.Quaternion();
+      w.parent.getWorldQuaternion(q);
+      assenLokaal.set(w, wereldX.clone().applyQuaternion(q.invert()).normalize());
+    }
+
+    const draaiWielen = (hoek: number): void => {
+      for (const [wiel, as] of assenLokaal) wiel.rotateOnAxis(as, hoek);
+    };
+
     console.info(
       "[spaak] fatbike.glb: " +
         delen.map((d) => d.rol).join(", ") +
@@ -308,6 +330,7 @@ export async function laadFiets(): Promise<GeladenFiets | null> {
       wielVoor: voor,
       wielAchter: achter,
       draaibaar: !!voor && !!achter,
+      draaiWielen,
       zadelTop,
       trapas,
     };

@@ -147,8 +147,7 @@ export class Speler {
 
     const rol = (snelheid * dt) / WIEL_STRAAL;
     if (this.geladen) {
-      this.geladen.wielVoor?.rotateX(-rol);
-      this.geladen.wielAchter?.rotateX(-rol);
+      this.geladen.draaiWielen(-rol);
     } else {
       this.fiets.wielVoor.rotation.x -= rol;
       this.fiets.wielAchter.rotation.x -= rol;
