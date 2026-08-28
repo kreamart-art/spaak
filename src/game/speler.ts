@@ -82,6 +82,7 @@ export class Speler {
     this.geladen = model;
     this.fiets.groep.visible = false;
     this.groep.add(model.groep);
+    this.groep.add(model.accenten);
 
     // The cranks stay: the generated ones are static geometry, so without these
     // the rider's feet would circle over nothing.

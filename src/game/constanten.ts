@@ -39,10 +39,15 @@ export const CAMERA_FOV_H = 74;
 export const CAMERA_FOV_V_MIN = 58;
 export const CAMERA_FOV_V_MAX = 88;
 
-export const CAMERA_Z = 9;
-export const CAMERA_Y = 4.7;
-export const CAMERA_KIJK_Z = -14;
-export const CAMERA_KIJK_Y = 1.6;
+/**
+ * Close and low. A runner lives or dies on whether you can read your own
+ * character, and at nine metres back the rider was a smudge. This puts him at
+ * roughly a fifth of the screen height, the way the genre does it.
+ */
+export const CAMERA_Z = 5.6;
+export const CAMERA_Y = 3.05;
+export const CAMERA_KIJK_Z = -11;
+export const CAMERA_KIJK_Y = 1.15;
 
 /** Visual bend, clamped as specified. Collision never sees any of this. */
 export const KROMMING_CLAMP = 1.4;

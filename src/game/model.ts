@@ -33,6 +33,8 @@ export interface GeladenFiets {
   readonly wielVoor: THREE.Object3D | null;
   readonly wielAchter: THREE.Object3D | null;
   readonly draaibaar: boolean;
+  /** Badges, tail lamp and brake discs, in the player's own space. */
+  readonly accenten: THREE.Group;
   /**
    * Roll both wheels forward by an angle.
    *
@@ -105,43 +107,232 @@ function bepaalRollen(delen: Deel[]): void {
   }
 }
 
-/** Real materials, because the export only carries part-id colours. */
+/**
+ * Real materials, because the export only carries part-id colours.
+ *
+ * The bike is black, so what has to do the work is the difference between the
+ * blacks: dead-matte rubber, satin paint, and metal that actually catches the
+ * sky. Give them all one colour and one roughness and it reads as a silhouette.
+ */
 function materiaalVoor(rol: Rol): THREE.MeshStandardMaterial {
   switch (rol) {
     case "wiel":
       return new THREE.MeshStandardMaterial({
-        color: 0x141518,
-        roughness: 0.93,
-        metalness: 0.05,
+        color: 0x17181c,
+        roughness: 0.97,
+        metalness: 0.0,
       });
     case "zadel":
       return new THREE.MeshStandardMaterial({
-        color: 0x1e2024,
-        roughness: 0.75,
-        metalness: 0.05,
+        color: 0x2a2b30,
+        roughness: 0.62,
+        metalness: 0.08,
       });
     case "stuur":
+      return new THREE.MeshStandardMaterial({
+        color: 0x53585f,
+        roughness: 0.22,
+        metalness: 0.95,
+      });
     case "spatbord":
       return new THREE.MeshStandardMaterial({
-        color: 0x191b1f,
-        roughness: 0.4,
-        metalness: 0.6,
+        color: 0x24262b,
+        roughness: 0.3,
+        metalness: 0.7,
       });
     case "lamp":
+      // Barely emissive: the whole housing glows, not just the lens, so a bright
+      // value smears yellow through the frame when seen from behind.
       return new THREE.MeshStandardMaterial({
-        color: 0xf6ecd2,
-        emissive: 0x8a7038,
-        roughness: 0.2,
-        metalness: 0.2,
+        color: 0xd8cdb4,
+        emissive: 0x2a2314,
+        roughness: 0.25,
+        metalness: 0.35,
       });
     default:
       // The frame: satin black paint, the colour the whole bike is built around.
       return new THREE.MeshStandardMaterial({
-        color: 0x1c1e22,
-        roughness: 0.38,
-        metalness: 0.55,
+        color: 0x2b2e34,
+        roughness: 0.3,
+        metalness: 0.7,
       });
   }
+}
+
+/**
+ * The Amsterdam crosses. On the number plates they sit on a plate; on the
+ * battery they are printed straight onto the black, so that version keeps a
+ * transparent ground.
+ */
+function kruisTextuur(metPlaat: boolean): THREE.CanvasTexture {
+  const c = document.createElement("canvas");
+  c.width = 256;
+  c.height = 128;
+  const g = c.getContext("2d")!;
+  if (metPlaat) {
+    g.fillStyle = "#0f1114";
+    g.fillRect(0, 0, 256, 128);
+  }
+  g.strokeStyle = "#f4f6f8";
+  g.lineWidth = 14;
+  g.lineCap = "square";
+  for (let i = 0; i < 3; i++) {
+    const cx = 58 + i * 70;
+    const r = 25;
+    g.beginPath();
+    g.moveTo(cx - r, 64 - r);
+    g.lineTo(cx + r, 64 + r);
+    g.moveTo(cx + r, 64 - r);
+    g.lineTo(cx - r, 64 + r);
+    g.stroke();
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.anisotropy = 4;
+  return tex;
+}
+
+function merkTextuur(): THREE.CanvasTexture {
+  const c = document.createElement("canvas");
+  c.width = 256;
+  c.height = 64;
+  const g = c.getContext("2d")!;
+  g.fillStyle = "#f4f6f8";
+  g.font = "700 38px ui-sans-serif, system-ui, sans-serif";
+  g.textAlign = "center";
+  g.textBaseline = "middle";
+  g.letterSpacing = "6px";
+  g.fillText("SPAAK", 128, 34);
+  return new THREE.CanvasTexture(c);
+}
+
+/**
+ * The markings the generator could not give us: brake discs that catch light,
+ * a red tail lamp, the crosses on the badges and the wordmark on the frame.
+ * All placed from the model's own measurements, so they follow a new model.
+ */
+function maakAccenten(
+  groep: THREE.Group,
+  delen: Deel[],
+  wielen: Deel[],
+): THREE.Group {
+  // Their own group, deliberately unscaled. The model group carries a scale of
+  // about sixteen to bring the export up to size, so world coordinates dropped
+  // into it as local positions would be multiplied by that again.
+  const accenten = new THREE.Group();
+  const alles = new THREE.Box3().setFromObject(groep);
+  const maat = new THREE.Vector3();
+  alles.getSize(maat);
+
+  const staal = new THREE.MeshStandardMaterial({
+    color: 0xb8bfc6,
+    roughness: 0.18,
+    metalness: 1.0,
+    side: THREE.DoubleSide,
+  });
+  const rood = new THREE.MeshStandardMaterial({
+    color: 0xe11f28,
+    emissive: 0x6d0f13,
+    roughness: 0.25,
+    metalness: 0.1,
+  });
+  const plaatMat = new THREE.MeshStandardMaterial({
+    map: kruisTextuur(true),
+    roughness: 0.45,
+    metalness: 0.25,
+  });
+  const gedruktMat = new THREE.MeshStandardMaterial({
+    map: kruisTextuur(false),
+    transparent: true,
+    roughness: 0.5,
+    metalness: 0.1,
+  });
+  const merk = new THREE.MeshStandardMaterial({
+    map: merkTextuur(),
+    transparent: true,
+    roughness: 0.5,
+    metalness: 0.1,
+  });
+
+  // Brake discs and hubs: the one bit of bright metal on a black bike.
+  for (const w of wielen) {
+    const doos = new THREE.Box3().setFromObject(w.mesh);
+    const c = doos.getCenter(new THREE.Vector3());
+    const straal = Math.max(doos.max.y - doos.min.y, doos.max.z - doos.min.z) / 2;
+    const kant = c.x >= 0 ? 1 : -1;
+
+    const schijf = new THREE.Mesh(
+      new THREE.RingGeometry(straal * 0.13, straal * 0.3, 20),
+      staal,
+    );
+    schijf.rotation.y = Math.PI / 2;
+    schijf.position.set(c.x - kant * (maat.x * 0.06 + 0.01), c.y, c.z);
+    accenten.add(schijf);
+
+    const naaf = new THREE.Mesh(
+      new THREE.CylinderGeometry(straal * 0.12, straal * 0.12, maat.x * 0.16, 12),
+      staal,
+    );
+    naaf.rotation.z = Math.PI / 2;
+    naaf.position.set(c.x, c.y, c.z);
+    accenten.add(naaf);
+  }
+
+  const zadel = delen.find((d) => d.rol === "zadel");
+  const zadelDoos = zadel ? new THREE.Box3().setFromObject(zadel.mesh) : alles;
+
+  // Anchor the markings on the frame, not on the whole model: the widest thing
+  // on a bike is the handlebars, so a badge placed off the total width floats
+  // out beside the frame instead of sitting on it.
+  const frame = delen.find((d) => d.rol === "frame");
+  const frameDoos = frame ? new THREE.Box3().setFromObject(frame.mesh) : alles;
+  const frameMaat = frameDoos.getSize(new THREE.Vector3());
+  const frameMidden = frameDoos.getCenter(new THREE.Vector3());
+
+  // Tail lamp on the back of the rack.
+  const licht = new THREE.Mesh(
+    new THREE.BoxGeometry(frameMaat.x * 0.85, 0.05, 0.035),
+    rood,
+  );
+  licht.position.set(0, zadelDoos.max.y - 0.06, alles.max.z - 0.02);
+  accenten.add(licht);
+
+  // Badges: one at each end, facing out.
+  // Real sizes, not fractions of the frame: a badge is a badge whatever the
+  // generator hands back, and the model is already normalised to 1,94 m.
+  const plaatGeo = new THREE.PlaneGeometry(0.2, 0.09);
+  const achterplaat = new THREE.Mesh(plaatGeo, plaatMat);
+  achterplaat.position.set(0, alles.min.y + maat.y * 0.42, alles.max.z - 0.005);
+  accenten.add(achterplaat);
+
+  const voorplaat = new THREE.Mesh(plaatGeo, plaatMat);
+  voorplaat.position.set(0, alles.min.y + maat.y * 0.45, alles.min.z + 0.005);
+  voorplaat.rotation.y = Math.PI;
+  accenten.add(voorplaat);
+
+  // The battery flanks carry the crosses, and the down tube the wordmark.
+  const flankGeo = new THREE.PlaneGeometry(0.3, 0.15);
+  const naamGeo = new THREE.PlaneGeometry(0.26, 0.06);
+  for (const kant of [-1, 1]) {
+    const flank = new THREE.Mesh(flankGeo, gedruktMat);
+    flank.position.set(
+      kant * (frameMaat.x / 2 + 0.004),
+      frameMidden.y - frameMaat.y * 0.06,
+      frameMidden.z + frameMaat.z * 0.02,
+    );
+    flank.rotation.y = (kant * Math.PI) / 2;
+    accenten.add(flank);
+
+    const naam = new THREE.Mesh(naamGeo, merk);
+    naam.position.set(
+      kant * (frameMaat.x / 2 + 0.004),
+      frameMidden.y + frameMaat.y * 0.22,
+      frameMidden.z - frameMaat.z * 0.26,
+    );
+    naam.rotation.y = (kant * Math.PI) / 2;
+    accenten.add(naam);
+  }
+
+  return accenten;
 }
 
 /**
@@ -258,6 +449,7 @@ export async function laadFiets(): Promise<GeladenFiets | null> {
     for (const d of delen) {
       d.mesh.material = materiaalVoor(d.rol);
     }
+    const accenten = maakAccenten(groep, delen, wielen);
 
     // --- wheels turn on their own axles -------------------------------------
     let voor: THREE.Object3D | null = null;
@@ -330,6 +522,7 @@ export async function laadFiets(): Promise<GeladenFiets | null> {
       wielVoor: voor,
       wielAchter: achter,
       draaibaar: !!voor && !!achter,
+      accenten,
       draaiWielen,
       zadelTop,
       trapas,

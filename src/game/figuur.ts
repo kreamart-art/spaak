@@ -100,7 +100,7 @@ export function maakFiguur(): Figuur {
   groep.add(bovenlijf);
 
   // ------------------------------------------------------------------ romp --
-  const bekken = capsule(0.14, 0.08, broek);
+  const bekken = capsule(0.12, 0.09, broek);
   bekken.rotation.z = Math.PI / 2;
   bekken.position.set(0, 0.96, 0.24);
   bovenlijf.add(bekken);
@@ -178,15 +178,15 @@ export function maakFiguur(): Figuur {
 
   // ------------------------------------------------------------------ armen --
   for (const kant of [-1, 1]) {
-    const schouder = new THREE.Mesh(new THREE.SphereGeometry(0.075, 10, 8), jas);
+    const schouder = new THREE.Mesh(new THREE.SphereGeometry(0.068, 10, 8), jas);
     schouder.position.set(kant * 0.16, 1.36, 0.12);
     bovenlijf.add(schouder);
 
     bovenlijf.add(
-      ledemaat([kant * 0.16, 1.36, 0.12], [kant * 0.22, 1.19, -0.13], 0.058, jas),
+      ledemaat([kant * 0.16, 1.36, 0.12], [kant * 0.22, 1.19, -0.13], 0.05, jas),
     );
     bovenlijf.add(
-      ledemaat([kant * 0.22, 1.19, -0.13], [kant * 0.26, 1.04, -0.4], 0.05, jas),
+      ledemaat([kant * 0.22, 1.19, -0.13], [kant * 0.26, 1.04, -0.4], 0.043, jas),
     );
 
     const hand = new THREE.Mesh(new THREE.SphereGeometry(0.055, 10, 8), huid);
@@ -202,13 +202,13 @@ export function maakFiguur(): Figuur {
     const lengteBoven = 0.4;
     const lengteOnder = 0.42;
 
-    const bovenbeen = capsule(0.075, lengteBoven - 0.15, broek);
-    const onderbeen = capsule(0.062, lengteOnder - 0.124, broek);
+    const bovenbeen = capsule(0.062, lengteBoven - 0.124, broek);
+    const onderbeen = capsule(0.05, lengteOnder - 0.1, broek);
     groep.add(bovenbeen, onderbeen);
 
-    const knie = new THREE.Mesh(new THREE.SphereGeometry(0.072, 10, 8), broek);
+    const knie = new THREE.Mesh(new THREE.SphereGeometry(0.06, 10, 8), broek);
     bovenbeen.add(knie);
-    knie.position.set(0, -(lengteBoven - 0.15) / 2, 0);
+    knie.position.set(0, -(lengteBoven - 0.124) / 2, 0);
 
     // The foot is a group so it can be rotated onto the pedal.
     const voet = new THREE.Group();
