@@ -50,9 +50,9 @@ export interface Uitslag {
   readonly spoor: readonly { x: number; z: number }[];
 }
 
-/** Overcast Amsterdam daylight. The fog and the sky share this exactly, so the
- *  horizon dissolves instead of showing the edge of the ground plane. */
-const HORIZON = 0xa9bccc;
+/** A bright day over the canals. The fog and the sky share this exactly, so
+ *  the horizon dissolves instead of showing the edge of the ground plane. */
+const HORIZON = 0x9cc6e8;
 
 export class Spaak {
   private readonly renderer: THREE.WebGLRenderer;
@@ -105,9 +105,9 @@ export class Spaak {
     this.scene.environmentIntensity = 0.55;
     pmrem.dispose();
 
-    const lucht = new THREE.HemisphereLight(0xe8f2fb, 0x6d6355, 2.1);
+    const lucht = new THREE.HemisphereLight(0xeaf4fd, 0x7a6f5c, 2.2);
     this.scene.add(lucht);
-    const zon = new THREE.DirectionalLight(0xfff3e0, 1.9);
+    const zon = new THREE.DirectionalLight(0xfff0d6, 2.2);
     zon.position.set(-0.6, 1, 0.35);
     this.scene.add(zon);
     // A second, dimmer light from the other side so the shaded facade wall does

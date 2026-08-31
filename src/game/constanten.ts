@@ -40,14 +40,14 @@ export const CAMERA_FOV_V_MIN = 58;
 export const CAMERA_FOV_V_MAX = 88;
 
 /**
- * Close and low. A runner lives or dies on whether you can read your own
- * character, and at nine metres back the rider was a smudge. This puts him at
- * roughly a fifth of the screen height, the way the genre does it.
+ * Close, low, and aimed well down the road. From four metres, nearly level, the
+ * rider stands about a quarter of the screen tall in the lower third, and the
+ * three lanes fan out towards the camera instead of squashing together.
  */
-export const CAMERA_Z = 5.6;
-export const CAMERA_Y = 3.05;
-export const CAMERA_KIJK_Z = -11;
-export const CAMERA_KIJK_Y = 1.15;
+export const CAMERA_Z = 4.3;
+export const CAMERA_Y = 2.3;
+export const CAMERA_KIJK_Z = -16;
+export const CAMERA_KIJK_Y = 1.6;
 
 /** Visual bend, clamped as specified. Collision never sees any of this. */
 export const KROMMING_CLAMP = 1.4;

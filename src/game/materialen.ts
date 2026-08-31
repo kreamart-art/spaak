@@ -4,8 +4,8 @@ import { hechtGevel } from "./gevel.ts";
 
 /** Amsterdam brick, sandstone, painted stucco and near-black trim. */
 export const GEVEL_PALET: readonly number[] = [
-  0x8c4a3a, 0x7a3d33, 0xa8654a, 0xb08a5e, 0x6f5544, 0x9a8b76, 0x565b60,
-  0x3f4348, 0xc2a37a, 0x6b3f45,
+  0xa34a34, 0x8a3c2e, 0xc06a48, 0xc79a5f, 0x7d5c42, 0xb2a184, 0x5d646e,
+  0x424852, 0xdcb684, 0x7c4048,
 ];
 
 /** Dutch pantile red through weathered slate. */
@@ -40,12 +40,12 @@ export function maakMaterialen(kromming: Kromming, wegTextuur: THREE.Texture): M
     gevel,
     kap: hecht(new THREE.MeshLambertMaterial()),
     water: hecht(
-      new THREE.MeshLambertMaterial({ color: 0x35606f, transparent: true, opacity: 0.95 }),
+      new THREE.MeshLambertMaterial({ color: 0x3a7287, transparent: true, opacity: 0.95 }),
     ),
     stam: hecht(new THREE.MeshLambertMaterial({ color: 0x4a3b2c })),
     kruin: hecht(new THREE.MeshLambertMaterial({ color: 0x3d6b3a })),
-    grond: hecht(new THREE.MeshLambertMaterial({ color: 0x5d5a53 })),
-    kade: hecht(new THREE.MeshLambertMaterial({ color: 0x8b8478 })),
+    grond: hecht(new THREE.MeshLambertMaterial({ color: 0x6f6a5e })),
+    kade: hecht(new THREE.MeshLambertMaterial({ color: 0x9c9384 })),
     weg: hecht(new THREE.MeshLambertMaterial({ map: wegTextuur })),
     brug: hecht(new THREE.MeshLambertMaterial({ color: 0x6b6257 })),
     brugDek: hecht(new THREE.MeshLambertMaterial({ color: 0x574f46 })),
@@ -53,34 +53,56 @@ export function maakMaterialen(kromming: Kromming, wegTextuur: THREE.Texture): M
   };
 }
 
-/** Cobbles with two dashed lane separators, drawn once into a canvas. */
+/**
+ * The running surface: an Amsterdam red asphalt bike path.
+ *
+ * What makes a runner readable is that the three lanes are unmistakable, the
+ * way rails and sleepers do it elsewhere. So: warm red asphalt, a heavy cream
+ * dash between the lanes, and a solid edge line on both sides. Drawn once into
+ * a canvas and repeated along z.
+ */
 export function maakWegTextuur(): THREE.Texture {
+  const B = 256;
+  const H = 256;
   const c = document.createElement("canvas");
-  c.width = 128;
-  c.height = 256;
+  c.width = B;
+  c.height = H;
   const g = c.getContext("2d")!;
 
-  g.fillStyle = "#33322f";
-  g.fillRect(0, 0, 128, 256);
+  // Red asphalt with a coarse grain.
+  g.fillStyle = "#9e3f33";
+  g.fillRect(0, 0, B, H);
+  for (let i = 0; i < 900; i++) {
+    const x = (Math.sin(i * 127.1) * 43758.5453) % 1;
+    const y = (Math.sin(i * 311.7) * 12543.8765) % 1;
+    const v = (Math.sin(i * 74.7) * 9631.223) % 1;
+    g.fillStyle = v > 0 ? "rgba(255,214,190,0.05)" : "rgba(40,10,8,0.09)";
+    g.fillRect(Math.abs(x) * B, Math.abs(y) * H, 2.5, 2.5);
+  }
 
-  // Cobble noise.
-  for (let y = 0; y < 256; y += 8) {
-    for (let x = 0; x < 128; x += 8) {
-      const n = (Math.sin(x * 12.9898 + y * 78.233) * 43758.5453) % 1;
-      const v = 0.5 + Math.abs(n) * 0.5;
-      g.fillStyle = `rgba(${Math.round(60 * v)},${Math.round(58 * v)},${Math.round(54 * v)},0.55)`;
-      g.fillRect(x, y, 7, 7);
+  // Faint tar seams so the surface reads as ridden-on asphalt.
+  g.fillStyle = "rgba(60,18,14,0.16)";
+  for (const y of [40, 122, 208]) g.fillRect(0, y, B, 2);
+
+  // The markings sit exactly on the gameplay lanes: centres at -2.6, 0, 2.6 on
+  // a 9 m strip, so the boundaries lie at +-1.3 m and the outer edges of the
+  // outer lanes at +-3.9 m. Drawn anywhere else, an obstacle parks itself just
+  // beside the middle of its own painted lane.
+  const meterNaarX = (m: number): number => ((m + 4.5) / 9) * B;
+  g.fillStyle = "#f2ead8";
+  const dash = 44;
+  const gat = 34;
+  for (const grens of [-1.3, 1.3]) {
+    const x = meterNaarX(grens);
+    for (let y = 0; y < H; y += dash + gat) {
+      g.fillRect(x - 5, y, 10, dash);
     }
   }
 
-  g.strokeStyle = "rgba(226,226,220,0.55)";
-  g.lineWidth = 3;
-  g.setLineDash([26, 26]);
-  for (const x of [128 / 3, (128 / 3) * 2]) {
-    g.beginPath();
-    g.moveTo(x, 0);
-    g.lineTo(x, 256);
-    g.stroke();
+  // Solid edge lines, brighter than the dashes so the track has a rim.
+  g.fillStyle = "#f7f1e2";
+  for (const rand of [-3.9, 3.9]) {
+    g.fillRect(meterNaarX(rand) - 3.5, 0, 7, H);
   }
 
   const tex = new THREE.CanvasTexture(c);
