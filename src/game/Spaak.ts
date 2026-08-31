@@ -50,9 +50,11 @@ export interface Uitslag {
   readonly spoor: readonly { x: number; z: number }[];
 }
 
-/** A bright day over the canals. The fog and the sky share this exactly, so
- *  the horizon dissolves instead of showing the edge of the ground plane. */
-const HORIZON = 0x9cc6e8;
+import { HORIZON_KLEUR, maakLucht } from "./lucht.ts";
+
+/** The fog fades everything to the dome's horizon band, so buildings dissolve
+ *  into the sky instead of outlining against it. */
+const HORIZON = HORIZON_KLEUR;
 
 export class Spaak {
   private readonly renderer: THREE.WebGLRenderer;
@@ -60,6 +62,7 @@ export class Spaak {
   private readonly camera: THREE.PerspectiveCamera;
   private readonly mist: THREE.FogExp2;
   private readonly kromming = new Kromming();
+  private readonly lucht = maakLucht();
   private readonly baan = new Baan();
   private readonly wereld: Wereld;
   private readonly speler = new Speler();
@@ -92,6 +95,7 @@ export class Spaak {
     this.scene.background = new THREE.Color(HORIZON);
     this.mist = new THREE.FogExp2(HORIZON, MIST_BASIS);
     this.scene.fog = this.mist;
+    this.scene.add(this.lucht);
 
     this.camera = new THREE.PerspectiveCamera(CAMERA_FOV_V_MIN, 1, 0.5, 420);
     this.camera.position.set(0, CAMERA_Y, CAMERA_Z);
@@ -254,6 +258,8 @@ export class Spaak {
       MIST_BASIS + Math.abs(this.kromming.huidig) * MIST_BOCHT;
 
     this.wegTextuur.offset.y = (this.sSpeler / 6) % 1;
+    // Clouds drift, barely. Enough that the sky lives, not enough to notice.
+    this.lucht.rotation.y += dt * 0.006;
 
     if (this.toestand === "loopt") {
       const doos = this.speler.doos();
